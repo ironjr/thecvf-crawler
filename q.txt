@@ -1,0 +1,11 @@
+specifying object attributes and relation
+point-line minimal problems
+singan
+larger norm more transferable
+deep hough voting for 3d object
+unsupervised deep learning for structured shape
+gated2depth
+local aggregation for unsupervised
+habitat
+robust change captioning
+
