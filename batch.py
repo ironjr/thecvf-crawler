@@ -40,7 +40,7 @@ def run_batch(args):
         conference=args.conference,
         timeout=args.timeout,
         verbose=args.verbose,
-        tqdm_module=pbar,
+        use_tqdm=True,
     )
 
     # Download with multiprocessing for efficient download
@@ -81,6 +81,8 @@ def run_batch(args):
         len_title_new = len(paper["title"])
         if len_title < len_title_new:
             len_title = len_title_new
+    if len_title > 60:
+        len_title = 60
     line_format = "{:" + str(len_id + 2) + "s}  " + \
             "{:" + str(len_title) + "s}  " + \
             "{:s}"
@@ -89,7 +91,7 @@ def run_batch(args):
     # TODO add column of successful download
     print(line_format.format("ID", "TITLE", "1st AUTHOR"))
     for pid, paper in enumerate(papers):
-        print(line_format.format(str(pid), paper["title"], paper["authors"][0]))
+        print(line_format.format(str(pid), paper["title"][:len_title], paper["authors"][0]))
 
 
 if __name__ == "__main__":
@@ -97,7 +99,7 @@ if __name__ == "__main__":
     parser.add_argument("--root", "-r", type=str, default="default",
             help="save directory")
     parser.add_argument("--conference", "-c", type=str, default="ICCV2019", help="name of the CV converence [CVPR, ICCV, ECCV][yyyy]")
-    parser.add_argument("--queries", "-q", type=str, default="q.txt",
+    parser.add_argument("--queries", "-q", type=str, default="sample.txt",
             help="search keywords in the paper title")
     parser.add_argument("--timeout", type=float, default=5.0,
             help="timeout of each request for file in seconds")

@@ -5,13 +5,14 @@ import requests
 import sys
 import urllib
 
+from tqdm import tqdm
 from unidecode import unidecode
 
 from parser import CVFMainParser
 
 
 class Downloader(object):
-    def __init__(self, root, conference, timeout=5.0, get_abstract=False, verbose=False, tqdm_module=None):
+    def __init__(self, root, conference, timeout=5.0, get_abstract=False, verbose=False, use_tqdm=True):
         self.root = root
         self.conference = conference
         self.timeout = timeout
@@ -40,9 +41,9 @@ class Downloader(object):
         self.get_abstract = get_abstract
 
         self.verbose = verbose
-        self.use_tqdm = tqdm_module is not None
+        self.use_tqdm = use_tqdm
         if self.use_tqdm:
-            self.print_function = tqdm_module.write
+            self.print_function = tqdm.write
         else:
             self.print_function = print
 
@@ -128,13 +129,19 @@ class Downloader(object):
         
         # Database is ready
         papers = [self.papers[i] for i, t in enumerate(self.titles) if query in t]
+        if len(papers) == 0:
+            self._print_failure(
+                query,
+                "No papers match the given query",
+                0,
+            )
         self.download(papers)
         return papers
 
     def download(self, papers):
         successes = 0
         for p in papers:
-            self.print_function("Downloading: {:10s}".format(p["title"]))
+            self.print_function("Downloading: {}".format(p["title"][:65]))
 
             # TODO Get abstract of the paper
             #  if html in p:
