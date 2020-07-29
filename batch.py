@@ -43,6 +43,7 @@ def run_batch(args):
             root=savedir,
             conference=conference,
             timeout=args.timeout,
+            download_supp=args.download_supp,
             verbose=args.verbose,
             tqdm_module=tq,
         )
@@ -107,14 +108,11 @@ def run_batch(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Paper search with downloader")
-    parser.add_argument("--root", "-r", type=str, default="default",
-            help="save directory")
+    parser.add_argument("--root", "-r", type=str, default="default", help="save directory")
     parser.add_argument("--conference", "-c", type=str, nargs="+", default="ICCV2019", help="name of the CV converence [CVPR, ICCV, ECCV][yyyy]")
-    parser.add_argument("--queries", "-q", type=str, default="q.txt",
-            help="search keywords in the paper title")
-    parser.add_argument("--timeout", type=float, default=5.0,
-            help="timeout of each request for file in seconds")
-    parser.add_argument("--verbose", "-v", action="store_true",
-            help="print detailed messages")
+    parser.add_argument("--download-supp", action="store_true", help="download suppplementary materials along with the main manuscripts")
+    parser.add_argument("--queries", "-q", type=str, default="q.txt", help="search keywords in the paper title")
+    parser.add_argument("--timeout", type=float, default=5.0, help="timeout of each request for file in seconds")
+    parser.add_argument("--verbose", "-v", action="store_true", help="print detailed messages")
     args = parser.parse_args()
     run_batch(args)

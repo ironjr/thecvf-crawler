@@ -11,9 +11,13 @@ from parser import CVFDaysParser, CVFMainParser
 
 
 class Downloader(object):
-    def __init__(self, root, conference, timeout=5.0, get_abstract=False, verbose=False, tqdm_module=None):
+    def __init__(self,
+            root, conference, timeout=5.0, get_abstract=False, verbose=False,
+            download_supp=False, tqdm_module=None
+        ):
         self.root = root
         self.conference = conference
+        self.download_supp = download_supp
         self.timeout = timeout
         self.urlroot = "http://openaccess.thecvf.com"
         self.urlmain = urllib.parse.urljoin(
@@ -191,7 +195,7 @@ class Downloader(object):
                 )
 
             # Download supplementary pdf if it exists.
-            if p["supp"]:
+            if p["supp"] and self.download_supp:
                 url = urllib.parse.urljoin(self.urlroot, p["supp"])
                 r = requests.get(url, stream=True, timeout=self.timeout)
                 if r.ok:
