@@ -9,7 +9,9 @@ class CVFMainParser(HTMLParser):
         self.flag_authors = False
         self.flag_in_content = False
         self.flag_in_dt = False
+        self.flag_dt_unresolved = False
         self.flag_in_a = False
+        self.flag_in_biblink = False
         self.counter_dd = 0
         self.counter_a = 0
         self.papers = []
@@ -25,8 +27,10 @@ class CVFMainParser(HTMLParser):
         if self.flag_in_content:
             if tag == "dt": # paper title
                 self.flag_in_dt = True
+                self.flag_dt_unresolved = True
             if tag == "dd": # link contents
-                self.counter_dd += 1
+                if self.flag_dt_unresolved:
+                    self.counter_dd += 1
                 self.counter_a = 0
             if tag == "a":
                 self.flag_in_a = True
@@ -36,7 +40,7 @@ class CVFMainParser(HTMLParser):
                             self.paper["html"] = value
                 elif self.counter_dd == 1: # authors
                     self.flag_authors = True
-                elif self.counter_dd == 2: # links
+                elif self.counter_dd == 2 and not self.flag_in_biblink: # links
                     self.counter_a += 1
                     if self.counter_a == 1: # paper
                         for name, value in attrs:
@@ -51,6 +55,8 @@ class CVFMainParser(HTMLParser):
                 for name, value in attrs:
                     if name == "id" and value == "content":
                         self.flag_in_content = True
+                    if name == "class" and value == "link2":
+                        self.flag_in_biblink = True
 
     def handle_endtag(self, tag):
         if tag == "div" and self.counter_dd == 0:
@@ -69,6 +75,7 @@ class CVFMainParser(HTMLParser):
                     "pdf": "",
                     "supp": "",
                 }
+                self.flag_dt_unresolved = False
         if tag == "a":
             self.flag_in_a = False
 
@@ -77,6 +84,44 @@ class CVFMainParser(HTMLParser):
             self.paper["title"] = data
         if self.flag_authors and self.flag_in_a:
             self.paper["authors"].append(data)
+
+
+class CVFDaysParser(HTMLParser):
+    def __init__(self):
+        """parser of the main search page with additional days contents
+        """
+        super(CVFDaysParser, self).__init__()
+        self.flag_authors = False
+        self.flag_in_content = False
+        self.flag_in_dd = False
+        self.flag_in_a = False
+        self.counter_days = 0
+        self.days = []
+
+    def handle_starttag(self, tag, attrs):
+        if self.flag_in_content:
+            if tag == "dd": # link contents
+                self.flag_in_dd = True
+            if tag == "a":
+                self.flag_in_a = True
+                if self.flag_in_dd:
+                    for name, value in attrs:
+                        if name == "href":
+                            self.days.append(value)
+                            self.counter_days += 1
+        else:
+            if tag == "div":
+                for name, value in attrs:
+                    if name == "id" and value == "content":
+                        self.flag_in_content = True
+
+    def handle_endtag(self, tag):
+        if tag == "div" and not self.flag_in_dd:
+            self.flag_in_content = False
+        if tag == "dd":
+            self.flag_in_dd = False
+        if tag == "a":
+            self.flag_in_a = False
 
 
 #  class CVFPaperParser(HTMLParser):

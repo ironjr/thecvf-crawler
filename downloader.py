@@ -7,7 +7,7 @@ import urllib
 
 from unidecode import unidecode
 
-from parser import CVFMainParser
+from parser import CVFDaysParser, CVFMainParser
 
 
 class Downloader(object):
@@ -46,7 +46,7 @@ class Downloader(object):
         else:
             self.print_function = print
 
-        # Fetch the whole list of papers provided in the main page
+        # Fetch the whole list of papers provided in the main page.
         self.papers = []
         self.database_ready = False
         self.crawl_database()
@@ -56,12 +56,8 @@ class Downloader(object):
             # TODO perhaps reload?
             return
 
-        r = requests.get(
-            self.urlmain,
-            timeout=self.timeout,
-        )
+        r = requests.get(self.urlmain, timeout=self.timeout)
         if not r.ok:
-            # Connection failed
             self._print_failure(
                 self.urlmain,
                 "Cannot reach thecvf server",
@@ -69,22 +65,47 @@ class Downloader(object):
             )
             return
 
-        # Successful connection
+        # Successful connection.
         parser_main = CVFMainParser()
         parser_main.feed(str(r.content))
         self.papers = parser_main.papers
-        if len(self.papers) == 0:
-            self._print_failure(
-                self.urlmain,
-                "No papers found in the main page",
-                r.status_code,
-            )
-            return
+        if len([p for p in self.papers if p["title"] != '']) == 0:
+            # Reset the papers.
+            self.papers = []
+
+            # Updated 200728: Recent conference pages contain additional "DAY"
+            # section to parse. Very annoying.
+            parser_days = CVFDaysParser()
+            parser_days.feed(str(r.content))
+            days = parser_days.days
+            if len(days) == 0:
+                self._print_failure(
+                    self.urlmain,
+                    "No papers found in the main page",
+                    r.status_code,
+                )
+                return
+
+            for day in days:
+                urlday = urllib.parse.urljoin(self.urlroot, day)
+                r = requests.get(urlday, timeout=self.timeout)
+                if not r.ok:
+                    self._print_failure(
+                        self.urlmain,
+                        "No papers found in the main page",
+                        r.status_code,
+                    )
+                    return
+
+                parser_main = CVFMainParser()
+                parser_main.feed(str(r.content))
+                self.papers.extend(parser_main.papers)
 
         self.titles = [p["title"].lower() for p in self.papers]
         self.database_ready = True
 
     def client_search(self, query):
+        # TODO
         data = { "query": query }
         r = requests.post(
             self.urlsearch,
@@ -93,7 +114,6 @@ class Downloader(object):
             timeout=self.timeout,
         )
         if not r.ok:
-            # Connection failed
             self._print_failure(
                 query,
                 "Cannot reach thecvf server",
@@ -101,7 +121,7 @@ class Downloader(object):
             )
             return []
 
-        # Successful connection
+        # Successful connection.
         parser_main = CVFMainParser()
         parser_main.feed(str(r.content))
         papers = parser_main.papers
@@ -115,10 +135,9 @@ class Downloader(object):
 
     def client(self, query):
         if not self.database_ready:
-            # Try once more
+            # Try once more.
             self.crawl_database()
             if not self.database_ready:
-                # Connection failed
                 self._print_failure(
                     query,
                     "Cannot reach thecvf server",
@@ -126,8 +145,14 @@ class Downloader(object):
                 )
             return []
         
-        # Database is ready
-        papers = [self.papers[i] for i, t in enumerate(self.titles) if query in t]
+        # Database is ready.
+        papers = [
+            self.papers[i] for i, t in enumerate(self.titles)
+            if query.lower() in t
+        ]
+        self.print_function("Total {:d} papers found with the query {:s}".format(
+            len(papers), query
+        ))
         self.download(papers)
         return papers
 
@@ -139,12 +164,12 @@ class Downloader(object):
             # TODO Get abstract of the paper
             #  if html in p:
 
-            # Download paper pdf
+            # Download paper pdf.
             if p["pdf"]:
                 url = urllib.parse.urljoin(self.urlroot, p["pdf"])
                 r = requests.get(url, stream=True, timeout=self.timeout)
                 if r.ok:
-                    # Successful connection
+                    # Successful connection.
                     path = os.path.join(
                         self.root,
                         p["pdf"].split("/")[2],
@@ -165,12 +190,12 @@ class Downloader(object):
                     r.status_code,
                 )
 
-            # Download supplementary pdf if it exists
+            # Download supplementary pdf if it exists.
             if p["supp"]:
                 url = urllib.parse.urljoin(self.urlroot, p["supp"])
                 r = requests.get(url, stream=True, timeout=self.timeout)
                 if r.ok:
-                    # Successful connection
+                    # Successful connection.
                     path = os.path.join(
                         self.root,
                         p["supp"].split("/")[2],
