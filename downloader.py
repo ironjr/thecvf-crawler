@@ -154,7 +154,7 @@ class Downloader(object):
     #          )
     #          return []
 
-    def client(self, query):
+    def client(self, query, list_only=False):
         if not self.database_ready:
             # Try once more.
             self.crawl_database()
@@ -174,7 +174,17 @@ class Downloader(object):
         self.print_function("Total {:d} papers found with the query {:s}".format(
             len(papers), query
         ))
-        self.download(papers)
+
+        if list_only:
+            with open(os.path.join(self.root, "urls.txt"), "wt") as f:
+                for p in papers:
+                    url = urllib.parse.urljoin(self.urlroot, p["pdf"])
+                    f.write("{:s}\n".format(url))
+                    if p["supp"] and self.download_supp:
+                        url = urllib.parse.urljoin(self.urlroot, p["supp"])
+                        f.write("{:s}\n".format(url))
+        else:
+            self.download(papers)
         return papers
 
     def download(self, papers):

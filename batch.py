@@ -69,7 +69,7 @@ def run_batch(args):
             for q in queries:
                 result = pool.apply_async(
                     downloader.client,
-                    (q,),
+                    (q, True,),
                     callback=update_tq,
                 )
                 results.append(result)
@@ -115,6 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--download-supp", action="store_true", help="download suppplementary materials along with the main manuscripts")
     parser.add_argument("--queries", "-q", type=str, default="q.txt", help="search keywords in the paper title")
     parser.add_argument("--timeout", type=float, default=60.0, help="timeout of each request for file in seconds")
+    parser.add_argument("--url-list-only", action="store_true", help="produce a list of urls for external downloader")
     parser.add_argument("--verbose", "-v", action="store_true", help="print detailed messages")
     args = parser.parse_args()
     run_batch(args)
