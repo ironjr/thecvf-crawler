@@ -1,9 +1,15 @@
 import json
 import os
 import re
-import requests
+import shutil
 import sys
+
+#  import http
+#  import requests
+import ssl
 import urllib
+import urllib.parse
+import urllib.request
 
 from unidecode import unidecode
 
@@ -12,14 +18,15 @@ from parser import CVFDaysParser, CVFMainParser
 
 class Downloader(object):
     def __init__(self,
-            root, conference, timeout=5.0, get_abstract=False, verbose=False,
-            download_supp=False, tqdm_module=None
+            root, conference, timeout=5.0, retry=5, get_abstract=False,
+            verbose=False, download_supp=False, tqdm_module=None
         ):
         self.root = root
         self.conference = conference
         self.download_supp = download_supp
         self.timeout = timeout
-        self.urlroot = "http://openaccess.thecvf.com"
+        self.retry = retry
+        self.urlroot = "https://openaccess.thecvf.com"
         self.urlmain = urllib.parse.urljoin(
             self.urlroot,
             "{}.py".format(conference),
@@ -34,9 +41,9 @@ class Downloader(object):
             "accept-encoding": "gzip, deflate",
             "content-type": "application/x-www-form-urlencoded",
             "content-length": "24",
-            "origin": "http://openaccess.thecvf.com",
+            "origin": "https://openaccess.thecvf.com",
             "connection": "keep-alive",
-            "referer": "http://openaccess.thecvf.com/{}_search.py".format(conference),
+            "referer": "https://openaccess.thecvf.com/{}_search.py".format(conference),
             "upgrade-insecure-requests": "1",
         }
 
@@ -60,18 +67,22 @@ class Downloader(object):
             # TODO perhaps reload?
             return
 
-        r = requests.get(self.urlmain, timeout=self.timeout)
-        if not r.ok:
-            self._print_failure(
-                self.urlmain,
-                "Cannot reach thecvf server",
-                r.status_code,
-            )
-            return
+        ##
+        # 1. Connect to the main URL.
+        ##
 
-        # Successful connection.
+        r = self._read_page(
+            self.urlmain,
+            error_msg="Cannot reach thecvf server",
+        )
+        if r is None:
+            return
+        rcontent = str(r.read())
+
+        # Parse the main page to determine whether it contains the list of
+        # papers directly or not.
         parser_main = CVFMainParser()
-        parser_main.feed(str(r.content))
+        parser_main.feed(rcontent)
         self.papers = parser_main.papers
         if len([p for p in self.papers if p["title"] != '']) == 0:
             # Reset the papers.
@@ -80,62 +91,68 @@ class Downloader(object):
             # Updated 200728: Recent conference pages contain additional "DAY"
             # section to parse. Very annoying.
             parser_days = CVFDaysParser()
-            parser_days.feed(str(r.content))
+            parser_days.feed(str(rcontent))
             days = parser_days.days
             if len(days) == 0:
                 self._print_failure(
                     self.urlmain,
                     "No papers found in the main page",
-                    r.status_code,
+                    r.status,
                 )
                 return
 
             for day in days:
                 urlday = urllib.parse.urljoin(self.urlroot, day)
-                r = requests.get(urlday, timeout=self.timeout)
-                if not r.ok:
-                    self._print_failure(
-                        self.urlmain,
-                        "No papers found in the main page",
-                        r.status_code,
-                    )
+                r = self._read_page(
+                    urlday,
+                    error_msg="No papers found in the main page",
+                )
+                if r is None:
                     return
+                rcontent = str(r.read())
 
                 parser_main = CVFMainParser()
-                parser_main.feed(str(r.content))
+                parser_main.feed(rcontent)
                 self.papers.extend(parser_main.papers)
 
         self.titles = [p["title"].lower() for p in self.papers]
         self.database_ready = True
 
-    def client_search(self, query):
-        # TODO
-        data = { "query": query }
-        r = requests.post(
-            self.urlsearch,
-            headers=self.search_headers,
-            data=data,
-            timeout=self.timeout,
-        )
-        if not r.ok:
-            self._print_failure(
-                query,
-                "Cannot reach thecvf server",
-                r.status_code,
-            )
-            return []
-
-        # Successful connection.
-        parser_main = CVFMainParser()
-        parser_main.feed(str(r.content))
-        papers = parser_main.papers
-        if len(papers) == 0:
-            self._print_failure(
-                query,
-                "No papers found in the main page",
-                r.status_code,
-            )
-            return []
+    #  def client_search(self, query):
+    #      # TODO
+    #      cxnsearch = http.client.HTTPSConnection(
+    #          self.urlsearch,
+    #          port=443,
+    #          context=ssl.SSLContext(),
+    #          timeout=timeout,
+    #      )
+    #
+    #      data = { "query": query }
+    #      r = requests.post(
+    #          self.urlsearch,
+    #          headers=self.search_headers,
+    #          data=data,
+    #          timeout=self.timeout,
+    #      )
+    #      if not r.ok:
+    #          self._print_failure(
+    #              query,
+    #              "Cannot reach thecvf server",
+    #              r.status,
+    #          )
+    #          return []
+    #
+    #      # Successful connection.
+    #      parser_main = CVFMainParser()
+    #      parser_main.feed(str(r.content))
+    #      papers = parser_main.papers
+    #      if len(papers) == 0:
+    #          self._print_failure(
+    #              query,
+    #              "No papers found in the main page",
+    #              r.status,
+    #          )
+    #          return []
 
     def client(self, query):
         if not self.database_ready:
@@ -145,7 +162,7 @@ class Downloader(object):
                 self._print_failure(
                     query,
                     "Cannot reach thecvf server",
-                    r.status_code,
+                    r.status,
                 )
             return []
         
@@ -171,50 +188,68 @@ class Downloader(object):
             # Download paper pdf.
             if p["pdf"]:
                 url = urllib.parse.urljoin(self.urlroot, p["pdf"])
-                r = requests.get(url, stream=True, timeout=self.timeout)
-                if r.ok:
-                    # Successful connection.
-                    path = os.path.join(
-                        self.root,
-                        p["pdf"].split("/")[2],
-                    )
-                    with open(path, "wb") as f:
-                        f.write(r.content)
-                    successes += 1
-                else:
-                    self._print_failure(
-                        p["title"],
-                        "Cannot download PDF from the link",
-                        r.status_code,
-                    )
+                r = self._read_page(
+                    url,
+                    error_msg="Cannot download PDF from the link",
+                    mute=True,
+                )
+                if r is None:
+                    continue
+                #  data = r.read()
+
+                # Successful connection.
+                path = os.path.join(self.root, p["pdf"].split("/")[2])
+                with open(path, "wb") as f:
+                    shutil.copyfileobj(r, f)
+                successes += 1
             else:
                 self._print_failure(
                     p["title"],
                     "No URL of PDF",
-                    r.status_code,
+                    r.status,
                 )
 
             # Download supplementary pdf if it exists.
             if p["supp"] and self.download_supp:
                 url = urllib.parse.urljoin(self.urlroot, p["supp"])
-                r = requests.get(url, stream=True, timeout=self.timeout)
-                if r.ok:
-                    # Successful connection.
-                    path = os.path.join(
-                        self.root,
-                        p["supp"].split("/")[2],
-                    )
-                    with open(path, "wb") as f:
-                        f.write(r.content)
-                else:
-                    self._print_failure(
-                        p["title"],
-                        "Cannot download supplementary PDF from the link",
-                        r.status_code,
-                    )
+                r = self._read_page(
+                    url,
+                    error_msg="Cannot download supplementary PDF from the link",
+                    mute=True,
+                )
+                if r is None:
+                    continue
+                #  data = r.read()
+
+                # Successful connection.
+                path = os.path.join(self.root, p["supp"].split("/")[2])
+                with open(path, "wb") as f:
+                    shutil.copyfileobj(r, f)
         return successes
 
     def _print_failure(self, title, msg, status_code):
         self.print_function("{:30s}: {}: {:d}" \
             .format(title, msg, status_code))
+
+    def _read_page(self, url, error_msg="Cannot reach the server", mute=False):
+        for tries in range(self.retry):
+            try:
+                if self.verbose and not mute:
+                    self.print_function("Connecting to {:s}  [{}/{}]" \
+                        .format(url, tries + 1, self.retry))
+                r = urllib.request.urlopen(
+                    urllib.request.Request(url, method="GET"),
+                    timeout=self.timeout,
+                    context=ssl.SSLContext(),
+                )
+                if r.status == 200:
+                    return r
+            except Exception as e:
+                if tries < self.retry - 1:
+                    continue
+                else:
+                    self._print_failure(url, error_msg, -1)
+                    return None
+        self._print_failure(url, error_msg, r.status)
+        return None
 

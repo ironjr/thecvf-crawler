@@ -87,6 +87,8 @@ def run_batch(args):
         print("Directory is now cleared")
         print("")
 
+    papers_total = set(papers_total)
+
     # Create line format to print pretty.
     len_id = len(str(len(papers_total)))
     len_title = 0
@@ -112,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("--conference", "-c", type=str, nargs="+", default="ICCV2019", help="name of the CV converence [CVPR, ICCV, ECCV][yyyy]")
     parser.add_argument("--download-supp", action="store_true", help="download suppplementary materials along with the main manuscripts")
     parser.add_argument("--queries", "-q", type=str, default="q.txt", help="search keywords in the paper title")
-    parser.add_argument("--timeout", type=float, default=5.0, help="timeout of each request for file in seconds")
+    parser.add_argument("--timeout", type=float, default=60.0, help="timeout of each request for file in seconds")
     parser.add_argument("--verbose", "-v", action="store_true", help="print detailed messages")
     args = parser.parse_args()
     run_batch(args)
